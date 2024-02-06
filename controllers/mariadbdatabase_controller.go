@@ -19,9 +19,12 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -31,6 +34,8 @@ import (
 	condition "github.com/openstack-k8s-operators/lib-common/modules/common/condition"
 	helper "github.com/openstack-k8s-operators/lib-common/modules/common/helper"
 	job "github.com/openstack-k8s-operators/lib-common/modules/common/job"
+	oko_secret "github.com/openstack-k8s-operators/lib-common/modules/common/secret"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	databasev1beta1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	mariadb "github.com/openstack-k8s-operators/mariadb-operator/pkg/mariadb"
 )
@@ -231,6 +236,46 @@ func (r *MariaDBDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		databasev1beta1.MariaDBDatabaseReadyMessage,
 	)
 
+	tlsEnabled := dbGalera.Spec.TLS.Enabled()
+	log.Info(fmt.Sprintf("galera cluster %s has TLS enabled: %t", dbGalera.Name, tlsEnabled))
+
+	// Create a new secret with the transport URL for this CR
+	pwd, ctrlResult, err := oko_secret.GetDataFromSecret(ctx, helper, *instance.Spec.Secret, time.Second*5, "DatabasePassword")
+	if (ctrlResult != ctrl.Result{}) {
+		return ctrlResult, nil
+	}
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	secret := r.createDBClientSecret(
+		instance,
+		instance.Name,
+		pwd,
+		fmt.Sprintf("%s.%s.svc", dbGalera.Name, instance.Namespace),
+		tlsEnabled)
+	_, op, err := oko_secret.CreateOrPatchSecret(ctx, helper, instance, secret)
+	if err != nil {
+		//instance.Status.Conditions.Set(condition.FalseCondition(
+		//	rabbitmqv1.TransportURLReadyCondition,
+		//	condition.ErrorReason,
+		//	condition.SeverityWarning,
+		//	rabbitmqv1.TransportURLReadyErrorMessage,
+		//	err.Error()))
+		return ctrl.Result{}, err
+	}
+	if op != controllerutil.OperationResultNone {
+		//instance.Status.Conditions.Set(condition.FalseCondition(
+		//	rabbitmqv1.TransportURLReadyCondition,
+		//	condition.RequestedReason,
+		//	condition.SeverityInfo,
+		//	rabbitmqv1.TransportURLReadyInitMessage))
+		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+	}
+
+	// Update the CR and return
+	instance.Status.SecretName = secret.Name
+
 	return ctrl.Result{}, nil
 }
 
@@ -248,4 +293,61 @@ func (r *MariaDBDatabaseReconciler) getDatabaseObject(ctx context.Context, insta
 		instance.ObjectMeta.Labels["dbName"],
 		instance.Namespace,
 	)
+}
+
+// Create k8s secret with DB connection URL and my.cnf client config
+func (r *MariaDBDatabaseReconciler) createDBClientSecret(
+	instance *databasev1beta1.MariaDBDatabase,
+	username string,
+	password string,
+	host string,
+	tlsEnabled bool,
+) *corev1.Secret {
+	// Create a new secret with the transport URL for this CR
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "database-config-" + instance.Name,
+			Namespace: instance.Namespace,
+		},
+		Data: map[string][]byte{
+			"connection": []byte(fmt.Sprintf("mysql+pymysql://%s:%s@%s/%s}?read_default_file=/etc/my.cnf",
+				username,
+				password,
+				host,
+				instance.Name)),
+			"my.cnf": []byte(createDatabaseClientConfig(instance)),
+		},
+	}
+}
+
+func createDatabaseClientConfig(instance *databasev1beta1.MariaDBDatabase) string {
+	conn := []string{}
+	conn = append(conn, "[client]")
+	conn = append(conn, "# options to connect to the remote mariadb server")
+
+	// TODO client cert
+	/*
+		if instance.Spec.TLS.CertMount != nil && instance.Spec.TLS.CertMount != nil {
+			certPath := s.getCertMountPath(serviceID)
+			keyPath := s.getKeyMountPath(serviceID)
+
+			conn = append(conn,
+				fmt.Sprintf("ssl-cert=%s", certPath),
+				fmt.Sprintf("ssl-key=%s", keyPath),
+			)
+		}
+	*/
+
+	// Client uses a CA certificate
+	caPath := tls.DownstreamTLSCABundlePath
+	if instance.Spec.TLS.CaMount != nil {
+		caPath = *instance.Spec.TLS.CaMount
+	}
+	conn = append(conn, fmt.Sprintf("ssl-ca=%s", caPath))
+
+	if len(conn) > 0 {
+		conn = append([]string{"ssl=1"}, conn...)
+	}
+
+	return strings.Join(conn, "\n")
 }

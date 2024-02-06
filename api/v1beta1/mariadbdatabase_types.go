@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	condition "github.com/openstack-k8s-operators/lib-common/modules/common/condition"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -41,6 +42,10 @@ type MariaDBDatabaseSpec struct {
 	// +kubebuilder:default=utf8_general_ci
 	// Default collation for this database
 	DefaultCollation string `json:"defaultCollation,omitempty"`
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec
+	// TLS client information to create the my.cnf client configuration
+	TLS tls.Service `json:"tls,omitempty"`
 }
 
 // MariaDBDatabaseStatus defines the observed state of MariaDBDatabase
@@ -51,6 +56,9 @@ type MariaDBDatabaseStatus struct {
 	Completed bool `json:"completed,omitempty"`
 	// Map of hashes to track e.g. job status
 	Hash map[string]string `json:"hash,omitempty"`
+
+	// SecretName - name of the secret containing the database connection URL and the my.cnf client config
+	SecretName string `json:"secretName,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -96,4 +104,5 @@ type Database struct {
 	labels           map[string]string
 	name             string
 	namespace        string
+	configSecret     string
 }

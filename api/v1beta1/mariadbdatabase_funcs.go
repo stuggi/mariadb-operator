@@ -113,6 +113,11 @@ func (d *Database) setDatabaseHostname(
 	return nil
 }
 
+// GetDatabaseSecret - returns the secret name holding the database connection and client config
+func (d *Database) GetDatabaseSecret() string {
+	return d.configSecret
+}
+
 // GetDatabaseHostname - returns the DB hostname which host the DB
 func (d *Database) GetDatabaseHostname() string {
 	return d.databaseHostname
@@ -261,6 +266,8 @@ func (d *Database) CreateOrPatchDBByName(
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	d.configSecret = db.Status.SecretName
 
 	return ctrl.Result{}, nil
 }

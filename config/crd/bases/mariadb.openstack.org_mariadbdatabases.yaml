@@ -49,6 +49,31 @@ spec:
               secret:
                 description: Name of secret which contains DatabasePassword (deprecated)
                 type: string
+              tls:
+                description: TLS client information to create the my.cnf client configuration
+                properties:
+                  caMount:
+                    description: CaMount - dst location to mount the CA cert ca.crt
+                      to. Can be used if the service CA cert should be mounted specifically,
+                      e.g. to be set in a service config for validation, instead of
+                      the env wide bundle.
+                    type: string
+                  certMount:
+                    description: CertMount - dst location to mount the service tls.crt
+                      cert. Can be used to override the default location which is
+                      /etc/tls/certs/<service id>.crt
+                    type: string
+                  keyMount:
+                    description: KeyMount - dst location to mount the service tls.key  key.
+                      Can be used to override the default location which is /etc/tls/private/<service
+                      id>.key
+                    type: string
+                  secretName:
+                    description: SecretName - holding the cert, key for the service
+                    type: string
+                required:
+                - secretName
+                type: object
             type: object
           status:
             description: MariaDBDatabaseStatus defines the observed state of MariaDBDatabase
@@ -103,6 +128,10 @@ spec:
                   type: string
                 description: Map of hashes to track e.g. job status
                 type: object
+              secretName:
+                description: SecretName - name of the secret containing the database
+                  connection URL and the my.cnf client config
+                type: string
             type: object
         type: object
     served: true

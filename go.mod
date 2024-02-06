@@ -77,3 +77,5 @@ require (
 )
 
 replace github.com/openstack-k8s-operators/mariadb-operator/api => ./api
+
+replace github.com/openstack-k8s-operators/lib-common/modules/common => github.com/stuggi/lib-common/modules/common v0.0.0-20240206080559-9502be95881d
