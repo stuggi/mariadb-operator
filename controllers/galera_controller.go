@@ -477,7 +477,7 @@ func (r *GaleraReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	headless := &corev1.Service{ObjectMeta: pkghl.ObjectMeta}
 	op, err := controllerutil.CreateOrPatch(ctx, r.Client, headless, func() error {
 		headless.Spec = pkghl.Spec
-		err := controllerutil.SetOwnerReference(instance, headless, r.Client.Scheme())
+		err := controllerutil.SetControllerReference(instance, headless, r.Client.Scheme())
 		if err != nil {
 			return err
 		}
@@ -503,7 +503,7 @@ func (r *GaleraReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		if present {
 			service.Spec.Selector[mariadb.ActivePodSelectorKey] = activePod
 		}
-		err := controllerutil.SetOwnerReference(instance, service, r.Client.Scheme())
+		err := controllerutil.SetControllerReference(instance, service, r.Client.Scheme())
 		if err != nil {
 			return err
 		}
@@ -814,7 +814,6 @@ func (r *GaleraReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Endpoints{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.ServiceAccount{}).
-		Owns(&corev1.Service{}).
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Watches(
@@ -828,7 +827,6 @@ func (r *GaleraReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // GetDatabaseObject - returns either a Galera or MariaDB object (and an associated client.Object interface).
 // used by both MariaDBDatabaseReconciler and MariaDBAccountReconciler
 // this will later return only Galera objects, so as a lookup it's part of the galera controller
-
 func GetDatabaseObject(ctx context.Context, clientObj client.Client, name string, namespace string) (*databasev1beta1.Galera, error) {
 	dbGalera := &databasev1beta1.Galera{
 		ObjectMeta: metav1.ObjectMeta{
